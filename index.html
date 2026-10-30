@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#171a17">
+<title>Peloponnesian Front 3D</title><link rel="stylesheet" href="style.css"></head><body>
+<div id="join" class="screen"><div class="crest">Λ</div><p class="eyebrow">431–404 BC · THE PELOPONNESIAN WAR</p><h1>PELOPONNESIAN<br><span>FRONT</span></h1><p class="intro">One soldier. One battlefield. Choose your polis.</p>
+<input id="playerName" maxlength="16" value="Hoplite" placeholder="Soldier name">
+<select id="weapon"><option value="spear">Doru spear + aspis</option><option value="sword">Xiphos sword + aspis</option><option value="kopis">Kopis + aspis</option><option value="bow">Bow</option></select>
+<div class="teams"><button class="team athens selected" data-team="Athens">ATHENS <small>IONIAN BLUE</small></button><button class="team sparta" data-team="Sparta">SPARTA <small>CRIMSON</small></button></div>
+<button id="joinBtn" class="primary">JOIN THE BATTLE</button><p id="joinError" class="error"></p><p class="fine">Prototype · Third-person 3D · Multiplayer</p></div>
+<div id="hud" class="hidden"><div class="topbar"><div class="brand">PELOPONNESIAN FRONT <span id="teamLabel">ATHENS</span></div><div id="playersCount">0 / 60</div><button id="leave">LEAVE</button></div>
+<div class="crosshair">+</div><div class="bottom-left"><div class="meter"><span>HEALTH</span><div><i id="healthBar"></i></div></div><div class="meter"><span>STAMINA</span><div><i id="staminaBar"></i></div></div></div>
+<div class="bottom-right">
+ <div class="attack-pad"><button data-attack="high" class="attack">↑<small>HIGH</small></button><div class="attack-row"><button data-attack="left" class="attack">←<small>LEFT</small></button><button data-attack="thrust" class="attack thrust">●<small>THRUST</small></button><button data-attack="right" class="attack">→<small>RIGHT</small></button></div><button data-attack="low" class="attack">↓<small>LOW</small></button></div>
+ <button id="block" class="block">HOLD<br>GUARD</button><button id="sprint" class="sprint">SPRINT</button>
+</div><div id="notice" class="notice">Drag the right side to look around</div><div class="weapon-switch"><select id="weaponInGame"><option value="spear">Spear</option><option value="sword">Xiphos</option><option value="kopis">Kopis</option><option value="bow">Bow</option></select></div>
+<div id="mobileHint" class="mobile-hint">LEFT: MOVE · RIGHT: LOOK · ATTACK: AIM & STRIKE</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script><script src="client.js"></script></body></html>

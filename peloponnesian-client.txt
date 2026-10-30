@@ -1,0 +1,83 @@
+let teamChoice="Athens",ws,myId=null,players=[],joined=false;
+const $=id=>document.getElementById(id);
+document.querySelectorAll(".team").forEach(b=>b.onclick=()=>{teamChoice=b.dataset.team;document.querySelectorAll(".team").forEach(x=>x.classList.toggle("selected",x===b));});
+let scene,camera,renderer,clock,worldGroup,remoteMeshes=new Map(),myMesh=null,terrain;
+let yaw=0,pitch=.22,moveX=0,moveZ=0,sprinting=false,blocking=false,attackLock=false;
+const keys={};let joy={active:false,id:null,x:0,y:0},look={active:false,id:null,x:0,y:0};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function init3D(){
+ scene=new THREE.Scene();scene.background=new THREE.Color(0x9b9b83);scene.fog=new THREE.Fog(0x9b9b83,38,105);
+ camera=new THREE.PerspectiveCamera(68,innerWidth/innerHeight,.1,180);
+ renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:"high-performance"});
+ renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=false;
+ renderer.outputColorSpace=THREE.SRGBColorSpace;document.body.appendChild(renderer.domElement);
+ clock=new THREE.Clock();worldGroup=new THREE.Group();scene.add(worldGroup);
+ scene.add(new THREE.HemisphereLight(0xe4dfc9,0x514b3b,2));
+ const sun=new THREE.DirectionalLight(0xffe3b1,2.1);sun.position.set(-25,45,18);scene.add(sun);
+ const ground=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshLambertMaterial({color:0x9b8b68}));ground.rotation.x=-Math.PI/2;ground.position.y=-.08;worldGroup.add(ground);
+ // Low-detail rocky hills and ruins frame the combat space.
+ const rockMat=new THREE.MeshLambertMaterial({color:0x77745f});
+ for(let i=0;i<46;i++){const h=1+Math.random()*5,r=1.5+Math.random()*4;const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),rockMat);const side=i%2?1:-1;rock.position.set(side*(34+Math.random()*15),h*.25,(Math.random()-.5)*90);rock.scale.y=h/r;worldGroup.add(rock);}
+ const pillarMat=new THREE.MeshLambertMaterial({color:0xc1b28e});
+ for(let i=0;i<8;i++){const x=(i%2?1:-1)*(12+Math.random()*8),z=(Math.floor(i/2)-1.5)*13;const pillar=new THREE.Mesh(new THREE.CylinderGeometry(.45,.55,4,7),pillarMat);pillar.position.set(x,2,z);worldGroup.add(pillar);const cap=new THREE.Mesh(new THREE.CylinderGeometry(.8,.8,.35,7),pillarMat);cap.position.set(x,4.1,z);worldGroup.add(cap);}
+ const pathMat=new THREE.MeshLambertMaterial({color:0xb5a47c});const road=new THREE.Mesh(new THREE.PlaneGeometry(18,100),pathMat);road.rotation.x=-Math.PI/2;road.position.y=.005;worldGroup.add(road);
+ window.addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+ animate();
+}
+function makeSoldier(p,isMe=false){
+ const g=new THREE.Group();const blue=p.team==="Athens";const cloth=new THREE.MeshLambertMaterial({color:blue?0x426f7d:0x8d3c34});
+ const bronze=new THREE.MeshLambertMaterial({color:0x9b865c}),skin=new THREE.MeshLambertMaterial({color:0xb98f6c}),dark=new THREE.MeshLambertMaterial({color:0x37352d});
+ const body=new THREE.Mesh(new THREE.CylinderGeometry(.36,.43,.95,7),cloth);body.position.y=1.12;g.add(body);
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.25,7,6),skin);head.position.y=1.82;g.add(head);
+ const helmet=new THREE.Mesh(new THREE.ConeGeometry(.34,.42,7),bronze);helmet.position.y=2.08;g.add(helmet);
+ const shield=new THREE.Mesh(new THREE.CylinderGeometry(.58,.58,.13,10),bronze);shield.rotation.x=Math.PI/2;shield.position.set(.42,1.2,.12);g.add(shield);
+ const spear=new THREE.Mesh(new THREE.CylinderGeometry(.035,.045,2.7,5),dark);spear.rotation.x=Math.PI/2;spear.position.set(0,1.15,-1.05);g.add(spear);
+ const tip=new THREE.Mesh(new THREE.ConeGeometry(.09,.32,5),bronze);tip.rotation.x=-Math.PI/2;tip.position.set(0,1.15,-2.52);g.add(tip);
+ g.userData={shield};return g;
+}
+function connect(){
+ const protocol=location.protocol==="https:"?"wss":"ws";ws=new WebSocket(`${protocol}://${location.host}`);
+ ws.onopen=()=>ws.send(JSON.stringify({type:"join",team:teamChoice,name:$("playerName").value||"Hoplite",weapon:$("weapon").value}));
+ ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==="welcome")myId=m.id;
+ if(m.type==="error"){$("joinError").textContent=m.message;ws.close();return;}
+ if(m.type==="joined"){joined=true;$("join").classList.add("hidden");$("hud").classList.remove("hidden");$("teamLabel").textContent=m.team.toUpperCase();$("weaponInGame").value=$("weapon").value;}
+ if(m.type==="state"){players=m.players;syncSoldiers();updateHud();}};
+ ws.onclose=()=>{if(joined){$("notice").textContent="Connection lost. Refresh to reconnect.";joined=false;}};
+}
+$("joinBtn").onclick=()=>{if(!window.THREE){$("joinError").textContent="3D engine did not load. Check your internet and reload.";return;}init3D();connect();};
+$("leave").onclick=()=>{if(ws)ws.close();location.reload();};
+function syncSoldiers(){
+ const alive=new Set(players.filter(p=>p.alive).map(p=>p.id));
+ for(const [id,obj] of remoteMeshes){if(!alive.has(id)){scene.remove(obj);remoteMeshes.delete(id);}}
+ for(const p of players){if(!p.alive)continue;let obj=remoteMeshes.get(p.id);if(!obj){obj=makeSoldier(p,p.id===myId);remoteMeshes.set(p.id,obj);scene.add(obj);if(p.id===myId)myMesh=obj;}
+ obj.position.set(p.x,0,p.z);obj.rotation.y=p.yaw;
+ obj.userData.shield.material.color.set(p.blocking?0xc5a65f:(p.team==="Athens"?0x9b865c:0x9b865c));
+ }
+}
+function updateHud(){const me=players.find(p=>p.id===myId);$("playersCount").textContent=`${players.length} / 60`;if(me){$("healthBar").style.width=me.hp+"%";$("staminaBar").style.width=me.stamina+"%";if(!me.alive)$("notice").textContent="You have fallen. Returning to the field shortly…";else if($("notice").textContent.startsWith("You have fallen"))$("notice").textContent="Stay with your allies. Watch your flanks.";}}
+function animate(){
+ requestAnimationFrame(animate);if(!renderer)return;const dt=Math.min(clock.getDelta(),.05);
+ const me=players.find(p=>p.id===myId&&p.alive);
+ if(me&&myMesh){
+  let dx=moveX+(keys.d?1:0)-(keys.a?1:0),dz=moveZ+(keys.s?1:0)-(keys.w?1:0);
+  const mag=Math.hypot(dx,dz);if(mag>.08){dx/=Math.max(1,mag);dz/=Math.max(1,mag);const forwardX=Math.sin(yaw),forwardZ=Math.cos(yaw),rightX=Math.cos(yaw),rightZ=-Math.sin(yaw);const wx=rightX*dx+forwardX*dz,wz=rightZ*dx+forwardZ*dz;send({type:"move",dx:wx,dz:wz,sprint:sprinting,yaw:Math.atan2(wx,wz)});}
+  const target=new THREE.Vector3(me.x,1.3,me.z);const offset=new THREE.Vector3(Math.sin(yaw)*7,3.3+pitch*5,Math.cos(yaw)*7);camera.position.lerp(target.clone().add(offset),.18);camera.lookAt(target);
+ }
+ renderer.render(scene,camera);
+}
+function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
+function attack(kind){if(attackLock)return;attackLock=true;send({type:"attack",kind});setTimeout(()=>attackLock=false,550);}
+document.querySelectorAll(".attack").forEach(b=>{b.addEventListener("pointerdown",e=>{e.preventDefault();attack(b.dataset.attack);});});
+const blockBtn=$("block");blockBtn.addEventListener("pointerdown",e=>{e.preventDefault();blocking=true;blockBtn.classList.add("active");send({type:"block",on:true,dir:yaw});});
+["pointerup","pointercancel","pointerleave"].forEach(ev=>blockBtn.addEventListener(ev,()=>{blocking=false;blockBtn.classList.remove("active");send({type:"block",on:false,dir:yaw});}));
+const sprintBtn=$("sprint");sprintBtn.addEventListener("pointerdown",e=>{e.preventDefault();sprinting=true;sprintBtn.classList.add("active");});["pointerup","pointercancel","pointerleave"].forEach(ev=>sprintBtn.addEventListener(ev,()=>{sprinting=false;sprintBtn.classList.remove("active");}));
+$("weaponInGame").onchange=e=>send({type:"weapon",weapon:e.target.value});
+window.addEventListener("keydown",e=>{keys[e.key.toLowerCase()]=true;if(e.code==="Space"){e.preventDefault();attack("thrust");}if(e.key==="Shift")sprinting=true;});
+window.addEventListener("keyup",e=>{keys[e.key.toLowerCase()]=false;if(e.key==="Shift")sprinting=false;});
+function pointerStart(e){const x=e.clientX,y=e.clientY;if(x<innerWidth*.43){joy.active=true;joy.id=e.pointerId;joy.x=x;joy.y=y;moveX=0;moveZ=0;}else{look.active=true;look.id=e.pointerId;look.x=x;look.y=y;} }
+function pointerMove(e){if(joy.active&&e.pointerId===joy.id){const dx=e.clientX-joy.x,dy=e.clientY-joy.y;const len=Math.hypot(dx,dy)||1;moveX=clamp(dx/48,-1,1);moveZ=clamp(dy/48,-1,1);}
+ if(look.active&&e.pointerId===look.id){const dx=e.clientX-look.x,dy=e.clientY-look.y;yaw-=dx*.006;pitch=clamp(pitch-dy*.004,-.15,.8);look.x=e.clientX;look.y=e.clientY;}}
+function pointerEnd(e){if(e.pointerId===joy.id){joy.active=false;moveX=0;moveZ=0;}if(e.pointerId===look.id)look.active=false;}
+document.addEventListener("pointerdown",pointerStart);document.addEventListener("pointermove",pointerMove);document.addEventListener("pointerup",pointerEnd);document.addEventListener("pointercancel",pointerEnd);
+
+document.querySelectorAll("button,select,input").forEach(el=>["pointerdown","pointermove","pointerup"].forEach(ev=>el.addEventListener(ev,e=>e.stopPropagation())));

@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: peloponnesian-front-3d
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
